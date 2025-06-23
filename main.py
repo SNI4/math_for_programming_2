@@ -1,155 +1,96 @@
 import pygame
-import math
-import random
-from car import Car
+import os
 
+# Инициализация Pygame
 pygame.init()
 
-# Параметры экрана
+# Размеры окна
 WIDTH, HEIGHT = 800, 600
-screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("Гоночная игра")
+win = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("Симуляция движения по коридору")
 
-# Цвета
-GREEN = (0, 150, 0)  # Задний фон
-ROAD_COLOR = (100, 100, 100)  # Цвет дороги
-BARRIER_COLOR = (255, 0, 0)  # Препятствия
-WHITE = (255, 255, 255)  # Текст
-BUTTON_COLOR = (50, 50, 50)  # Кнопка
-BUTTON_HOVER_COLOR = (80, 80, 80)  # Кнопка при наведении
+# Параметры движения
+pos_x, pos_y = 0, 0  # Координаты пользователя
+view_angle = 0       # Угол обзора (0-360)
+STEP = 1             # Шаг по координатам (в логической системе, не пикселях)
+ANGLE_STEP = 45      # Шаг поворота
 
-# Параметры дороги
-road_x = WIDTH // 4
-road_width = WIDTH // 2
-scroll_speed = 3  # Скорость движения дороги
+# Загрузка изображений в словарь
+image_db = {}
+image_folder = "images"
 
+# Предполагаем, что у нас есть изображения для точки (0,0) под всеми углами
+angles_list = [0, 45, 90, 135, 180, 225, 270, 315]
 
-# Функция генерации препятствий
-def generate_barrier():
-    barrier_width = random.randint(50, 80)
-    barrier_x = random.randint(road_x + 10, road_x + road_width - barrier_width - 10)
-    barrier_y = -50  # Препятствие появляется сверху
-    barriers.append((barrier_x, barrier_y, barrier_width, 40))
-
-
-# Функция отрисовки дороги
-def draw_road():
-    pygame.draw.rect(screen, ROAD_COLOR, (road_x, 0, road_width, HEIGHT))  # Дорога
-    pygame.draw.rect(screen, BARRIER_COLOR, (road_x - 10, 0, 10, HEIGHT))  # Левая граница
-    pygame.draw.rect(screen, BARRIER_COLOR, (road_x + road_width, 0, 10, HEIGHT))  # Правая граница
-
-
-# Функция отрисовки препятствий
-def draw_barriers():
-    for barrier in barriers:
-        pygame.draw.rect(screen, BARRIER_COLOR, barrier)
-
-
-# Функция, ограничивающая движение машины в пределах дороги
-def constrain_movement():
-    if car.x - 20 < road_x:
-        car.x = road_x + 20
-    if car.x + 20 > road_x + road_width:
-        car.x = road_x + road_width - 20
-
-
-# Функция проверки столкновения машины с препятствиями
-def check_collision():
-    car_rect = pygame.Rect(car.x - 20, car.y - 40, 40, 80)
-    for barrier in barriers:
-        barrier_rect = pygame.Rect(barrier)
-        if car_rect.colliderect(barrier_rect):
-            return True
-    return False
-
-
-# Функция отображения сообщения о проигрыше
-def display_message(message):
-    font = pygame.font.Font(None, 74)
-    text = font.render(message, True, WHITE)
-    text_rect = text.get_rect(center=(WIDTH // 2, HEIGHT // 3))
-    screen.blit(text, text_rect)
-
-
-# Функция отрисовки кнопки "Начать заново"
-def draw_button():
-    button_rect = pygame.Rect(WIDTH // 2 - 100, HEIGHT // 2, 200, 50)
-    mouse_pos = pygame.mouse.get_pos()
-
-    if button_rect.collidepoint(mouse_pos):
-        pygame.draw.rect(screen, BUTTON_HOVER_COLOR, button_rect)
+for ang in angles_list:
+    filename = f"{pos_x}_{pos_y}_{ang}.jpg"
+    path = os.path.join(image_folder, filename)
+    if os.path.exists(path):
+        image_db[(pos_x, pos_y, ang)] = pygame.image.load(path)
     else:
-        pygame.draw.rect(screen, BUTTON_COLOR, button_rect)
+        print(f"[!] Не найдено изображение: {filename}")
 
-    font = pygame.font.Font(None, 40)
-    text = font.render("Начать заново", True, WHITE)
-    text_rect = text.get_rect(center=button_rect.center)
-    screen.blit(text, text_rect)
+# Функция для обновления изображения
+def update_scene():
+    key = (pos_x, pos_y, view_angle)
+    if key in image_db:
+        win.blit(pygame.transform.scale(image_db[key], (WIDTH, HEIGHT)), (0, 0))
+    else:
+        win.fill((0, 0, 0))
+        print(f"[!] Нет изображения для: {key}")
+    pygame.display.update()
 
-    return button_rect
+# Основной цикл
+run = True
+update_scene()
 
-
-# Функция сброса игры
-def reset_game():
-    global car, barriers, frame_counter, game_over
-    car = Car(WIDTH // 2, HEIGHT - 120, "assets/car.png")
-    barriers = []
-    frame_counter = 0
-    game_over = False
-
-
-# Основные переменные
-running = True
-game_over = False
-frame_counter = 0
-car = Car(WIDTH // 2, HEIGHT - 120, "assets/car.png")
-barriers = []
-clock = pygame.time.Clock()
-
-# Главный игровой цикл
-while running:
-    screen.fill(GREEN)  # Фон
-    draw_road()  # Отрисовка дороги
-    draw_barriers()  # Отрисовка препятствий
-
-    # Обработка событий
+while run:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
-            running = False
+            run = False
 
-        if game_over and event.type == pygame.MOUSEBUTTONDOWN:
-            if restart_button.collidepoint(event.pos):
-                reset_game()
+    keys = pygame.key.get_pressed()
 
-    # Основная логика игры
-    if not game_over:
-        keys = pygame.key.get_pressed()
-        car.update(keys)  # Обновление состояния машины
-        constrain_movement()  # Ограничение выхода за границы
+    if keys[pygame.K_ESCAPE]:
+        run = False
 
-        # Движение препятствий вниз при движении машины вперед
-        if car.speed > 0:
-            for i in range(len(barriers)):
-                x, y, w, h = barriers[i]
-                barriers[i] = (x, y + scroll_speed, w, h)
+    moved = False
 
-            barriers = [b for b in barriers if b[1] < HEIGHT]
+    if keys[pygame.K_LEFT]:
+        view_angle = (view_angle - ANGLE_STEP) % 360
+        moved = True
+        pygame.time.wait(150)
 
-            if frame_counter % 60 == 0:
-                generate_barrier()
+    if keys[pygame.K_RIGHT]:
+        view_angle = (view_angle + ANGLE_STEP) % 360
+        moved = True
+        pygame.time.wait(150)
 
-        # Проверка столкновений
-        if car.speed > 0 and check_collision():
-            game_over = True
+    if keys[pygame.K_UP]:
+        if view_angle == 0:
+            pos_y -= STEP
+        elif view_angle == 90:
+            pos_x += STEP
+        elif view_angle == 180:
+            pos_y += STEP
+        elif view_angle == 270:
+            pos_x -= STEP
+        moved = True
+        pygame.time.wait(150)
 
-        car.draw(screen)
-        frame_counter += 1
+    if keys[pygame.K_DOWN]:
+        if view_angle == 0:
+            pos_y += STEP
+        elif view_angle == 90:
+            pos_x -= STEP
+        elif view_angle == 180:
+            pos_y -= STEP
+        elif view_angle == 270:
+            pos_x += STEP
+        moved = True
+        pygame.time.wait(150)
 
-    else:
-        display_message("Вы проиграли!")
-        restart_button = draw_button()
-
-    pygame.display.flip()
-    clock.tick(60)
+    if moved:
+        update_scene()
 
 pygame.quit()

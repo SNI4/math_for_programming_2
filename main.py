@@ -1,155 +1,144 @@
 import pygame
-import math
-import random
-from car import Car
+import sys
 
+# Инициализация Pygame
 pygame.init()
-
-# Параметры экрана
 WIDTH, HEIGHT = 800, 600
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("Гоночная игра")
-
-# Цвета
-GREEN = (0, 150, 0)  # Задний фон
-ROAD_COLOR = (100, 100, 100)  # Цвет дороги
-BARRIER_COLOR = (255, 0, 0)  # Препятствия
-WHITE = (255, 255, 255)  # Текст
-BUTTON_COLOR = (50, 50, 50)  # Кнопка
-BUTTON_HOVER_COLOR = (80, 80, 80)  # Кнопка при наведении
-
-# Параметры дороги
-road_x = WIDTH // 4
-road_width = WIDTH // 2
-scroll_speed = 3  # Скорость движения дороги
-
-
-# Функция генерации препятствий
-def generate_barrier():
-    barrier_width = random.randint(50, 80)
-    barrier_x = random.randint(road_x + 10, road_x + road_width - barrier_width - 10)
-    barrier_y = -50  # Препятствие появляется сверху
-    barriers.append((barrier_x, barrier_y, barrier_width, 40))
-
-
-# Функция отрисовки дороги
-def draw_road():
-    pygame.draw.rect(screen, ROAD_COLOR, (road_x, 0, road_width, HEIGHT))  # Дорога
-    pygame.draw.rect(screen, BARRIER_COLOR, (road_x - 10, 0, 10, HEIGHT))  # Левая граница
-    pygame.draw.rect(screen, BARRIER_COLOR, (road_x + road_width, 0, 10, HEIGHT))  # Правая граница
-
-
-# Функция отрисовки препятствий
-def draw_barriers():
-    for barrier in barriers:
-        pygame.draw.rect(screen, BARRIER_COLOR, barrier)
-
-
-# Функция, ограничивающая движение машины в пределах дороги
-def constrain_movement():
-    if car.x - 20 < road_x:
-        car.x = road_x + 20
-    if car.x + 20 > road_x + road_width:
-        car.x = road_x + road_width - 20
-
-
-# Функция проверки столкновения машины с препятствиями
-def check_collision():
-    car_rect = pygame.Rect(car.x - 20, car.y - 40, 40, 80)
-    for barrier in barriers:
-        barrier_rect = pygame.Rect(barrier)
-        if car_rect.colliderect(barrier_rect):
-            return True
-    return False
-
-
-# Функция отображения сообщения о проигрыше
-def display_message(message):
-    font = pygame.font.Font(None, 74)
-    text = font.render(message, True, WHITE)
-    text_rect = text.get_rect(center=(WIDTH // 2, HEIGHT // 3))
-    screen.blit(text, text_rect)
-
-
-# Функция отрисовки кнопки "Начать заново"
-def draw_button():
-    button_rect = pygame.Rect(WIDTH // 2 - 100, HEIGHT // 2, 200, 50)
-    mouse_pos = pygame.mouse.get_pos()
-
-    if button_rect.collidepoint(mouse_pos):
-        pygame.draw.rect(screen, BUTTON_HOVER_COLOR, button_rect)
-    else:
-        pygame.draw.rect(screen, BUTTON_COLOR, button_rect)
-
-    font = pygame.font.Font(None, 40)
-    text = font.render("Начать заново", True, WHITE)
-    text_rect = text.get_rect(center=button_rect.center)
-    screen.blit(text, text_rect)
-
-    return button_rect
-
-
-# Функция сброса игры
-def reset_game():
-    global car, barriers, frame_counter, game_over
-    car = Car(WIDTH // 2, HEIGHT - 120, "assets/car.png")
-    barriers = []
-    frame_counter = 0
-    game_over = False
-
-
-# Основные переменные
-running = True
-game_over = False
-frame_counter = 0
-car = Car(WIDTH // 2, HEIGHT - 120, "assets/car.png")
-barriers = []
+pygame.display.set_caption("Симуляция движения по коридору")
 clock = pygame.time.Clock()
 
-# Главный игровой цикл
-while running:
-    screen.fill(GREEN)  # Фон
-    draw_road()  # Отрисовка дороги
-    draw_barriers()  # Отрисовка препятствий
+# Игрок
+player_x, player_y = 0, 0
+player_dir = 0  # 0 = вверх, 90 = вправо, 180 = вниз, 270 = влево
 
-    # Обработка событий
+# Глубина
+depth = 6
+
+# Цвета
+WALL_COLOR = (120, 120, 200)
+FLOOR_COLOR = (40, 40, 40)
+CEIL_COLOR = (25, 25, 45)
+OBJECT_COLOR = (200, 80, 80)
+
+# Объекты
+objects = {
+    (0, 3): {"color": (255, 100, 100), "active": True},
+    (1, 4): {"color": (100, 255, 100), "active": True},
+}
+
+def move_forward():
+    global player_x, player_y
+    if player_dir == 0:
+        player_y += 1
+    elif player_dir == 90:
+        player_x += 1
+    elif player_dir == 180:
+        player_y -= 1
+    elif player_dir == 270:
+        player_x -= 1
+
+def move_backward():
+    global player_x, player_y
+    if player_dir == 0:
+        player_y -= 1
+    elif player_dir == 90:
+        player_x -= 1
+    elif player_dir == 180:
+        player_y += 1
+    elif player_dir == 270:
+        player_x += 1
+
+def get_relative_coords(obj_x, obj_y):
+    dx = obj_x - player_x
+    dy = obj_y - player_y
+    if player_dir == 0:
+        return dx, dy
+    elif player_dir == 90:
+        return -dy, dx
+    elif player_dir == 180:
+        return -dx, -dy
+    elif player_dir == 270:
+        return dy, -dx
+
+def draw_corridor():
+    for i in range(depth):
+        z = i + 1
+        scale = 1 / z
+        width = int(WIDTH * 0.8 * scale)
+        height = int(HEIGHT * 0.8 * scale)
+        x = WIDTH // 2 - width // 2
+        y = HEIGHT // 2 - height // 2
+
+        # Потолок
+        pygame.draw.polygon(screen, CEIL_COLOR, [
+            (x, y),
+            (x + width, y),
+            (WIDTH // 2 + WIDTH // 4, 0),
+            (WIDTH // 2 - WIDTH // 4, 0)
+        ])
+
+        # Пол
+        pygame.draw.polygon(screen, FLOOR_COLOR, [
+            (x, y + height),
+            (x + width, y + height),
+            (WIDTH // 2 + WIDTH // 4, HEIGHT),
+            (WIDTH // 2 - WIDTH // 4, HEIGHT)
+        ])
+
+        # Стены
+        pygame.draw.rect(screen, WALL_COLOR, (x, y, width, height), 2)
+
+def draw_objects():
+    for (x, y), obj in objects.items():
+        rel_x, rel_y = get_relative_coords(x, y)
+        if rel_y <= 0 or rel_y > depth:
+            continue
+        scale = 1 / rel_y
+        size = int(100 * scale)
+        offset_x = int(rel_x * 120 * scale)
+        pos_x = WIDTH // 2 + offset_x - size // 2
+        pos_y = HEIGHT // 2 + int(100 * scale) - size
+        pygame.draw.ellipse(screen, obj["color"], (pos_x, pos_y, size, size * 1.3))
+
+def update_objects():
+    for key in objects:
+        if pygame.time.get_ticks() % 2000 < 100:
+            objects[key]["active"] = not objects[key]["active"]
+
+# Основной цикл
+running = True
+while running:
+    screen.fill((0, 0, 0))
+
+    # События
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
 
-        if game_over and event.type == pygame.MOUSEBUTTONDOWN:
-            if restart_button.collidepoint(event.pos):
-                reset_game()
+    # Управление
+    keys = pygame.key.get_pressed()
+    if keys[pygame.K_ESCAPE]:
+        running = False
+    elif keys[pygame.K_UP]:
+        move_forward()
+        pygame.time.wait(150)
+    elif keys[pygame.K_DOWN]:
+        move_backward()
+        pygame.time.wait(150)
+    elif keys[pygame.K_LEFT]:
+        player_dir = (player_dir - 90) % 360
+        pygame.time.wait(150)
+    elif keys[pygame.K_RIGHT]:
+        player_dir = (player_dir + 90) % 360
+        pygame.time.wait(150)
 
-    # Основная логика игры
-    if not game_over:
-        keys = pygame.key.get_pressed()
-        car.update(keys)  # Обновление состояния машины
-        constrain_movement()  # Ограничение выхода за границы
-
-        # Движение препятствий вниз при движении машины вперед
-        if car.speed > 0:
-            for i in range(len(barriers)):
-                x, y, w, h = barriers[i]
-                barriers[i] = (x, y + scroll_speed, w, h)
-
-            barriers = [b for b in barriers if b[1] < HEIGHT]
-
-            if frame_counter % 60 == 0:
-                generate_barrier()
-
-        # Проверка столкновений
-        if car.speed > 0 and check_collision():
-            game_over = True
-
-        car.draw(screen)
-        frame_counter += 1
-
-    else:
-        display_message("Вы проиграли!")
-        restart_button = draw_button()
-
+    # Отрисовка
+    update_objects()
+    draw_corridor()
+    draw_objects()
     pygame.display.flip()
-    clock.tick(60)
+    clock.tick(30)
 
 pygame.quit()
+sys.exit()

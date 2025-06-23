@@ -1,155 +1,183 @@
 import pygame
+import sys
 import math
-import random
-from car import Car
 
+# Настройки окна
+WIDTH, HEIGHT = 1000, 500
+FPS = 60
+dt = 1 / FPS
+
+# Инициализация Pygame
 pygame.init()
-
-# Параметры экрана
-WIDTH, HEIGHT = 800, 600
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("Гоночная игра")
-
-# Цвета
-GREEN = (0, 150, 0)  # Задний фон
-ROAD_COLOR = (100, 100, 100)  # Цвет дороги
-BARRIER_COLOR = (255, 0, 0)  # Препятствия
-WHITE = (255, 255, 255)  # Текст
-BUTTON_COLOR = (50, 50, 50)  # Кнопка
-BUTTON_HOVER_COLOR = (80, 80, 80)  # Кнопка при наведении
-
-# Параметры дороги
-road_x = WIDTH // 4
-road_width = WIDTH // 2
-scroll_speed = 3  # Скорость движения дороги
-
-
-# Функция генерации препятствий
-def generate_barrier():
-    barrier_width = random.randint(50, 80)
-    barrier_x = random.randint(road_x + 10, road_x + road_width - barrier_width - 10)
-    barrier_y = -50  # Препятствие появляется сверху
-    barriers.append((barrier_x, barrier_y, barrier_width, 40))
-
-
-# Функция отрисовки дороги
-def draw_road():
-    pygame.draw.rect(screen, ROAD_COLOR, (road_x, 0, road_width, HEIGHT))  # Дорога
-    pygame.draw.rect(screen, BARRIER_COLOR, (road_x - 10, 0, 10, HEIGHT))  # Левая граница
-    pygame.draw.rect(screen, BARRIER_COLOR, (road_x + road_width, 0, 10, HEIGHT))  # Правая граница
-
-
-# Функция отрисовки препятствий
-def draw_barriers():
-    for barrier in barriers:
-        pygame.draw.rect(screen, BARRIER_COLOR, barrier)
-
-
-# Функция, ограничивающая движение машины в пределах дороги
-def constrain_movement():
-    if car.x - 20 < road_x:
-        car.x = road_x + 20
-    if car.x + 20 > road_x + road_width:
-        car.x = road_x + road_width - 20
-
-
-# Функция проверки столкновения машины с препятствиями
-def check_collision():
-    car_rect = pygame.Rect(car.x - 20, car.y - 40, 40, 80)
-    for barrier in barriers:
-        barrier_rect = pygame.Rect(barrier)
-        if car_rect.colliderect(barrier_rect):
-            return True
-    return False
-
-
-# Функция отображения сообщения о проигрыше
-def display_message(message):
-    font = pygame.font.Font(None, 74)
-    text = font.render(message, True, WHITE)
-    text_rect = text.get_rect(center=(WIDTH // 2, HEIGHT // 3))
-    screen.blit(text, text_rect)
-
-
-# Функция отрисовки кнопки "Начать заново"
-def draw_button():
-    button_rect = pygame.Rect(WIDTH // 2 - 100, HEIGHT // 2, 200, 50)
-    mouse_pos = pygame.mouse.get_pos()
-
-    if button_rect.collidepoint(mouse_pos):
-        pygame.draw.rect(screen, BUTTON_HOVER_COLOR, button_rect)
-    else:
-        pygame.draw.rect(screen, BUTTON_COLOR, button_rect)
-
-    font = pygame.font.Font(None, 40)
-    text = font.render("Начать заново", True, WHITE)
-    text_rect = text.get_rect(center=button_rect.center)
-    screen.blit(text, text_rect)
-
-    return button_rect
-
-
-# Функция сброса игры
-def reset_game():
-    global car, barriers, frame_counter, game_over
-    car = Car(WIDTH // 2, HEIGHT - 120, "assets/car.png")
-    barriers = []
-    frame_counter = 0
-    game_over = False
-
-
-# Основные переменные
-running = True
-game_over = False
-frame_counter = 0
-car = Car(WIDTH // 2, HEIGHT - 120, "assets/car.png")
-barriers = []
+pygame.display.set_caption("Динамика тележек: столкновение с трением и вращением")
 clock = pygame.time.Clock()
 
-# Главный игровой цикл
-while running:
-    screen.fill(GREEN)  # Фон
-    draw_road()  # Отрисовка дороги
-    draw_barriers()  # Отрисовка препятствий
+# Цвета
+WHITE = (255, 255, 255)
+BLACK = (0, 0, 0)
+RED = (220, 20, 60)
+BLUE = (30, 144, 255)
+GREEN = (0, 255, 0)
+GRAY = (200, 200, 200)
+DARK_GRAY = (100, 100, 100)
 
-    # Обработка событий
+
+class Cart:
+    def __init__(self, x, y, mass, velocity, mu, color, image=None):
+        self.x = x
+        self.y = y
+        self.mass = mass
+        self.vx = velocity
+        self.mu = mu  # Коэффициент трения
+        self.color = color
+        self.width = 60
+        self.height = 40
+        self.angle = 0  # угол поворота в радианах
+        self.omega = 0  # угловая скорость
+        self.I = 0.1 * self.mass * (self.width / 100) ** 2  # момент инерции (примерно)
+        self.image = image
+        if image:
+            self.img = pygame.image.load(image)
+            self.img = pygame.transform.scale(self.img, (self.width, self.height))
+        else:
+            self.img = None
+
+    def apply_friction(self):
+        friction_force = self.mu * self.mass * 9.8
+        deceleration = friction_force / self.mass
+        if self.vx > 0:
+            self.vx -= deceleration * dt * 100
+            if self.vx < 0:
+                self.vx = 0
+        elif self.vx < 0:
+            self.vx += deceleration * dt * 100
+            if self.vx > 0:
+                self.vx = 0
+
+    def apply_rot_friction(self):
+        torque_friction = 0.05 * self.omega
+        alpha = -torque_friction / self.I
+        self.omega += alpha * dt
+
+    def update(self):
+        self.x += self.vx * dt
+        self.angle += self.omega * dt
+
+        self.apply_friction()
+        self.apply_rot_friction()
+
+        # Ограничение по экрану
+        if self.x < 0:
+            self.x = 0
+            self.vx = 0
+        elif self.x > WIDTH - self.width:
+            self.x = WIDTH - self.width
+            self.vx = 0
+
+    def draw(self, surface):
+        if self.img:
+            rotated_image = pygame.transform.rotate(self.img, -math.degrees(self.angle))
+            rect = rotated_image.get_rect(center=(self.x + self.width / 2, self.y + self.height / 2))
+            surface.blit(rotated_image, rect.topleft)
+        else:
+            # Рисуем прямоугольник с поворотом
+            surf = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+            surf.fill(self.color)
+            rotated = pygame.transform.rotate(surf, -math.degrees(self.angle))
+            rect = rotated.get_rect(center=(self.x + self.width / 2, self.y + self.height / 2))
+            surface.blit(rotated, rect.topleft)
+
+        # Вектор скорости
+        vx_end = self.x + self.width / 2 + self.vx / 3
+        vy_end = self.y + self.height / 2
+        pygame.draw.line(surface, GREEN, (self.x + self.width / 2, self.y + self.height / 2), (vx_end, vy_end), 3)
+
+
+def collision(cart1, cart2, e):
+    # Проверяем столкновение по оси X (простая коллизия)
+    if cart1.x + cart1.width >= cart2.x and cart1.x < cart2.x + cart2.width:
+        # Рассчёт новых скоростей по закону сохранения импульса с коэффициентом восстановления
+        v1_new = ((cart1.mass - e * cart2.mass) * cart1.vx + (1 + e) * cart2.mass * cart2.vx) / (
+                    cart1.mass + cart2.mass)
+        v2_new = ((cart2.mass - e * cart1.mass) * cart2.vx + (1 + e) * cart1.mass * cart1.vx) / (
+                    cart1.mass + cart2.mass)
+
+        # Обновляем скорости
+        cart1.vx = v1_new
+        cart2.vx = v2_new
+
+        # Вращение при столкновении
+        relative_velocity = abs(cart1.vx - cart2.vx)
+        torque1 = 0.02 * relative_velocity * cart2.mass
+        torque2 = 0.02 * relative_velocity * cart1.mass
+
+        cart1.omega += torque1 / cart1.I
+        cart2.omega += torque2 / cart2.I
+
+        # Смещаем тележки, чтобы не залипали
+        overlap = (cart1.x + cart1.width) - cart2.x
+        cart1.x -= overlap / 2
+        cart2.x += overlap / 2
+
+
+def create_carts():
+    # Функция для создания начальных тележек (для перезапуска)
+    return (
+        Cart(x=200, y=HEIGHT // 2, mass=2.0, velocity=200, mu=0.02, color=RED, image='cart1.png'),
+        Cart(x=700, y=HEIGHT // 2, mass=1.5, velocity=-150, mu=0.03, color=BLUE, image='cart2.png')
+    )
+
+
+def draw_button(surface, rect, text, font, active=True):
+    color = DARK_GRAY if active else GRAY
+    pygame.draw.rect(surface, color, rect)
+    txt_surf = font.render(text, True, WHITE if active else DARK_GRAY)
+    txt_rect = txt_surf.get_rect(center=rect.center)
+    surface.blit(txt_surf, txt_rect)
+
+
+# Инициализация
+cart1, cart2 = create_carts()
+e = 0.7  # Коэффициент восстановления
+
+font = pygame.font.SysFont('timesnewroman', 18)
+
+# Кнопка "Начать заново"
+button_rect = pygame.Rect(WIDTH - 150, 10, 140, 40)
+
+while True:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
-            running = False
+            pygame.quit()
+            sys.exit()
 
-        if game_over and event.type == pygame.MOUSEBUTTONDOWN:
-            if restart_button.collidepoint(event.pos):
-                reset_game()
+        elif event.type == pygame.MOUSEBUTTONDOWN:
+            if button_rect.collidepoint(event.pos):
+                # Перезапуск — создаём новые тележки
+                cart1, cart2 = create_carts()
 
-    # Основная логика игры
-    if not game_over:
-        keys = pygame.key.get_pressed()
-        car.update(keys)  # Обновление состояния машины
-        constrain_movement()  # Ограничение выхода за границы
+    screen.fill(WHITE)
 
-        # Движение препятствий вниз при движении машины вперед
-        if car.speed > 0:
-            for i in range(len(barriers)):
-                x, y, w, h = barriers[i]
-                barriers[i] = (x, y + scroll_speed, w, h)
+    # Обновление тележек
+    cart1.update()
+    cart2.update()
 
-            barriers = [b for b in barriers if b[1] < HEIGHT]
+    # Проверка столкновения
+    collision(cart1, cart2, e)
 
-            if frame_counter % 60 == 0:
-                generate_barrier()
+    # Отрисовка тележек
+    cart1.draw(screen)
+    cart2.draw(screen)
 
-        # Проверка столкновений
-        if car.speed > 0 and check_collision():
-            game_over = True
+    # Текст с параметрами
+    text1 = font.render(f'Cart1: v={cart1.vx:.1f} px/s, ω={cart1.omega:.2f} rad/s', True, BLACK)
+    text2 = font.render(f'Cart2: v={cart2.vx:.1f} px/s, ω={cart2.omega:.2f} rad/s', True, BLACK)
+    screen.blit(text1, (10, 10))
+    screen.blit(text2, (10, 30))
 
-        car.draw(screen)
-        frame_counter += 1
-
-    else:
-        display_message("Вы проиграли!")
-        restart_button = draw_button()
+    # Отрисовка кнопки
+    draw_button(screen, button_rect, "Начать заново", font)
 
     pygame.display.flip()
-    clock.tick(60)
-
-pygame.quit()
+    clock.tick(FPS)
